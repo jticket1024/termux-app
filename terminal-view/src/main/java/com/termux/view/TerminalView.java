@@ -26,6 +26,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewTreeObserver;
+import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityManager;
 import android.view.autofill.AutofillValue;
 import android.view.inputmethod.BaseInputConnection;
@@ -43,6 +44,9 @@ import com.termux.view.textselection.TextSelectionCursorController;
 
 /** View displaying and interacting with a {@link TerminalSession}. */
 public final class TerminalView extends View {
+    private AccessibilityManager accessibilityManager;
+    private String previousTerminalContent = "";
+    private boolean isFirstUpdate = true;
 
     /** Log terminal view key and IME events. */
     private static boolean TERMINAL_VIEW_KEY_LOGGING_ENABLED = false;
@@ -97,6 +101,7 @@ public final class TerminalView extends View {
 
     public TerminalView(Context context, AttributeSet attributes) { // NO_UCD (unused code)
         super(context, attributes);
+                accessibilityManager = (AccessibilityManager) context.getSystemService(Context.ACCESSIBILITY_SERVICE);
         mGestureRecognizer = new GestureAndScaleRecognizer(context, new GestureAndScaleRecognizer.Listener() {
 
             boolean scrolledWithFinger;
@@ -223,6 +228,21 @@ public final class TerminalView extends View {
         mAccessibilityEnabled = am.isEnabled();
     }
 
+
+
+    private void announceForAccessibility(CharSequence text) {
+        if (accessibilityManager.isEnabled()) {
+            AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_ANNOUNCEMENT);
+            event.getText().add(text);
+            accessibilityManager.sendAccessibilityEvent(event);
+        }
+    }
+
+    public void announceInitialContent(String initialContent) {
+        announceForAccessibility(initialContent);
+        previousTerminalContent = initialContent;
+        isFirstUpdate = false;
+    }
 
 
     /**
@@ -456,8 +476,24 @@ public final class TerminalView extends View {
 
         mEmulator.clearScrollCounter();
 
+    String currentTerminalContent = getText().toString();
+
+    if (isFirstUpdate) {
+        announceInitialContent(currentTerminalContent);
+    } else {
+        String[] newLines = currentTerminalContent.split("\n");
+        String[] oldLines = previousTerminalContent.split("\n");
+
+        for (int i = oldLines.length; i < newLines.length; i++) {
+            announceForAccessibility(newLines[i]);
+        }
+
+        previousTerminalContent = currentTerminalContent;
+    }
+
+
         invalidate();
-        if (mAccessibilityEnabled) setContentDescription(getText());
+        if (mAccessibilityEnabled) setContentDescription(currentTerminalContent);
     }
 
     /** This must be called by the hosting activity in {@link Activity#onContextMenuClosed(Menu)}
